@@ -1,0 +1,164 @@
+---
+title: "Homework 6"
+author: "Samriddh gupta"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+
+## Model Building Homework
+
+# Libraries
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(purrr)
+library(modelr)
+library(lubridate)
+```
+
+1.	(2 pts) Create a dataset from hflights that has the Date, Day of the Week, and the number of flights for that date.  Visualize the data both as a line graph (# of flights vs Date) and as a boxplot for each day of the week.
+
+```{r}
+data1<-hflights::hflights
+
+data1 %>% 
+  mutate(Date=make_date(Year,Month,DayofMonth)) %>% 
+  select(Date,DayOfWeek) %>% 
+  group_by(Date) %>% 
+  mutate(NumberOfFlights=n())->
+  data2
+
+data2<-data2 %>% 
+  mutate(Wday=wday(Date,label = TRUE))
+
+head(data2)
+
+ggplot(data = data2,mapping = aes(Date,NumberOfFlights))+
+  geom_line()
+
+g<-ggplot(data = data2,mapping = aes(Wday,NumberOfFlights))+
+  geom_boxplot()
+
+g
+```
+
+
+2.	(1 pt) Construct a model using day of the week as the predictor.  What does this model tell us? Visualize the residuals.
+
+```{r}
+mod <- lm(NumberOfFlights ~ Wday, data = data2)
+
+grid <- data2 %>%
+  data_grid(Wday) %>%
+  add_predictions(mod, "NumberOfFlights")
+grid
+
+## The model predicts the Number of the flights on any given week day.
+g+geom_point(data = grid,color = "red", size = 3)
+
+
+data2 <- data2 %>%
+  add_residuals(mod)
+data2
+
+ggplot(data = data2,mapping = aes(Date,resid))+
+  geom_line()
+```
+
+(2 pts)  Add a variable to account for seasonal variation.  You can adjust the breaks something like this (feel free to change the dates)
+
+season <- function(date) {
+  cut(date, 
+    breaks = ymd(20110101, 20110301, 20110605, 201130905, 20120101),
+    labels = c("winter","spring", "summer", "fall") 
+  )
+}
+
+mod1 <- lm(n ~ wday * season, data = daily)
+daily_res <- daily %>% 
+  add_residuals(mod1, "resid")
+
+```{r}
+
+
+data2<-data2 %>% 
+  mutate(season=cut(Date,
+                    breaks = ymd(20110101, 20110301, 20110605, 20110825, 20120101),
+                    labels = c("winter","spring", "summer", "fall")))
+
+mod1 <- lm(NumberOfFlights ~ Wday * season, data = data2)
+daily_res <- data2 %>% 
+  add_residuals(mod1, "resid")
+
+head(daily_res)
+
+```
+
+
+
+4.	(3 1/2 pts)
+a)	 (1/2 pt) Identify the dates with the largest residual values.  What do you think is the cause for the days with the highest and lowest residual values? 
+```{r}
+daily_res %>%
+  filter(abs(resid) > 100 ) %>% 
+  ggplot(data= daily_res,mapping=aes(Date, resid)) +
+  geom_ref_line(h = 0) +
+  geom_point(alpha = 1/3) +
+  geom_line(color = "grey50") +
+  geom_smooth(se = FALSE, span = 0.20)
+
+daily_res %>%
+  filter(Wday == "Sat") %>%
+  ggplot(aes(Date, NumberOfFlights, colour = season)) +
+  geom_point(alpha = 1/3) +
+  geom_line() +
+  scale_x_date(NULL, date_breaks = "1 month", date_labels = "%b")
+
+daily_res %>%
+  ggplot(aes(Date, resid, color = Wday)) +
+  geom_ref_line(h = 0) +
+  geom_line()
+
+## Most of the dates on the models appears to be holidays(If we look it at American Holiday calenders) and people like to travel at that time
+```
+
+
+
+b)	(1 pt) Add a variable to identify dates fitting this criterion. 
+```{r}
+data3<-data2 %>% 
+  mutate(Quarter=cut(Date,
+                    breaks = ymd(20110101, 20110401, 20110701, 20111101, 20120101),
+                    labels = c("Q1","Q2", "Q3", "Q4")))
+tail(data3)
+```
+
+
+
+c)	(2 pts) Build a model to explain your data using the variables you now have.  Visualize the residuals.
+
+```{r}
+mod1 <- lm(NumberOfFlights ~ Wday, data = data3)
+mod2 <- lm(NumberOfFlights ~ Wday * Quarter, data = data3)
+
+data3 %>%
+  gather_residuals(without_term = mod1, with_term = mod2) %>%
+  ggplot(aes(Date, resid, colour = model)) +
+  geom_line(alpha = 0.75)
+
+```
+
+5.	(1 1/2 pts) Use what you have learned above to predict the number of flights for 2020 per day.  Print a graph that overlays the number of flights in 2011 with your number of predicted flights in 2020. How many flights do you predict for each day June 20 - July 10 of 2020?
+
+```{r}
+data4<-data3%>%
+  data_grid(Wday,Quarter,Date =seq(ymd(20200101),ymd(20201231),by=1) ) %>%
+  add_predictions(mod2) 
+
+
+
+```
+
+
+
